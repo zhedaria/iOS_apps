@@ -2,6 +2,7 @@ import SwiftUI
 import PhotosUI
 
 struct ContentView: View {
+    @State private var previewItem: PreviewItem?
     @State private var selectedItem: PhotosPickerItem?
     @StateObject private var viewModel = OutlineViewModel()
     
@@ -14,21 +15,6 @@ struct ContentView: View {
                     Text("Let's start painting")
                         .font(.largeTitle)
                         .fontWeight(.bold)
-                    
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Reference")
-                            .font(.headline)
-                        
-                        if let selectedImage = viewModel.selectedImage {
-                            Image(uiImage: selectedImage)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(maxHeight: 300)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                        } else {
-                            placeholderBox(text: "Inspiration Placeholder")
-                        }
-                    }
                     
                     PhotosPicker(
                         selection: $selectedItem,
@@ -63,19 +49,9 @@ struct ContentView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .disabled(viewModel.selectedImage == nil || viewModel.isLoading)
                     
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Outline Result")
-                            .font(.headline)
-                        
-                        if let outlineImage = viewModel.outlineImage {
-                            Image(uiImage: outlineImage)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(maxHeight: 300)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                        } else {
-                            placeholderBox(text: "No outline generated yet")
-                        }
+                    if viewModel.selectedImage != nil || viewModel.outlineImage != nil {
+                        currentImagesSection
+                            .transition(.move(edge: .top).combined(with: .opacity))
                     }
                     
                     if let errorMessage = viewModel.errorMessage {
@@ -88,14 +64,19 @@ struct ContentView: View {
             }
             .navigationTitle("Copainter")
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.86), value: viewModel.selectedImage != nil)
+        .animation(.spring(response: 0.35, dampingFraction: 0.86), value: viewModel.outlineImage != nil)
         .task {
             await viewModel.loadUploadHistory()
         }
         .task(id: selectedItem) {
             await viewModel.loadSelectedImage(from: selectedItem)
         }
+        .fullScreenCover(item: $previewItem) { item in
+            FullScreenImageView(item: item)
+        }
     }
-
+    
     private var historySection: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
@@ -132,12 +113,26 @@ struct ContentView: View {
             } else {
                 GeometryReader { geometry in
                     let cardWidth = max((geometry.size.width - 12) / 2, 0)
-
+                    
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
                             ForEach(viewModel.uploadHistory, id: \.image_id) { record in
-                                UploadHistoryCard(record: record)
-                                    .frame(width: cardWidth)
+                                UploadHistoryCard(
+                                    record: record,
+                                    onSelectOriginal: {
+                                        previewItem = PreviewItem(
+                                            title: "Original Reference",
+                                            imageURL: record.original_image_url
+                                        )
+                                    },
+                                    onSelectResult: {
+                                        previewItem = PreviewItem(
+                                            title: "Generated Outline",
+                                            imageURL: record.result_image_url
+                                        )
+                                    }
+                                )
+                                .frame(width: cardWidth)
                             }
                         }
                         .frame(maxWidth: .infinity)
@@ -151,32 +146,78 @@ struct ContentView: View {
         }
     }
     
-    @ViewBuilder
-    private func placeholderBox(text: String) -> some View {
-        RoundedRectangle(cornerRadius: 12)
-            .fill(Color.gray.opacity(0.15))
-            .frame(height: 300)
-            .overlay(
-                Text(text)
-                    .foregroundColor(.secondary)
+    private var currentImagesSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Current Images")
+                .font(.title3.weight(.semibold))
+            
+            HStack(alignment: .top, spacing: 14) {
+                if let selectedImage = viewModel.selectedImage {
+                    currentImageThumbnail(
+                        title: "Reference",
+                        image: selectedImage
+                    )
+                }
+                
+                if let outlineImage = viewModel.outlineImage {
+                    currentImageThumbnail(
+                        title: "Outline",
+                        image: outlineImage
+                    )
+                }
+            }
+        }
+    }
+    
+    private func currentImageThumbnail(title: String, image: UIImage) -> some View {
+        Button {
+            previewItem = PreviewItem(title: title, image: image)
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 132)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color(.secondarySystemBackground))
             )
+        }
+        .buttonStyle(.plain)
     }
 }
 
 private struct UploadHistoryCard: View {
     let record: UploadRecord
+    let onSelectOriginal: () -> Void
+    let onSelectResult: () -> Void
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             ZStack {
-                thumbnail(urlString: record.result_image_url)
-                    .frame(height: 96)
-                    .offset(x: 10, y: 8)
-                    .zIndex(0)
+                thumbnailButton(
+                    urlString: record.result_image_url,
+                    action: onSelectResult
+                )
+                .frame(height: 96)
+                .offset(x: 10, y: 8)
+                .zIndex(0)
                 
-                thumbnail(urlString: record.original_image_url)
-                    .frame(height: 96)
-                    .zIndex(1)
+                thumbnailButton(
+                    urlString: record.original_image_url,
+                    action: onSelectOriginal
+                )
+                .frame(height: 96)
+                .zIndex(1)
             }
             .frame(maxWidth: .infinity)
             .padding(.trailing, 10)
@@ -187,7 +228,7 @@ private struct UploadHistoryCard: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
             
-            Text("Original on top")
+            Text(lastUpdatedText)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -212,36 +253,122 @@ private struct UploadHistoryCard: View {
             .lowercased() ?? String(record.image_id.prefix(8)).lowercased()
     }
     
+    private var lastUpdatedText: String {
+        guard let date = ISO8601DateFormatter().date(from: record.created_at) else {
+            return "Updated recently"
+        }
+        
+        return "Updated \(date.formatted(.relative(presentation: .named)))"
+    }
+    
     @ViewBuilder
-    private func thumbnail(urlString: String) -> some View {
-        AsyncImage(url: URL(string: urlString)) { phase in
-            switch phase {
-            case .success(let image):
-                image
-                    .resizable()
-                    .scaledToFill()
-            case .failure:
+    private func thumbnailButton(urlString: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            AsyncImage(url: URL(string: urlString)) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                case .failure:
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color(.tertiarySystemFill))
+                        .overlay(
+                            Image(systemName: "photo")
+                                .foregroundStyle(.secondary)
+                        )
+                case .empty:
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color(.secondarySystemBackground))
+                        .overlay(ProgressView())
+                @unknown default:
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color(.secondarySystemBackground))
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color(.tertiarySystemFill))
-                    .overlay(
-                        Image(systemName: "photo")
-                            .foregroundStyle(.secondary)
-                    )
-            case .empty:
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color(.secondarySystemBackground))
-                    .overlay(ProgressView())
-            @unknown default:
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color(.secondarySystemBackground))
+                    .stroke(Color.white.opacity(0.85), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.08), radius: 8, y: 4)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct PreviewItem: Identifiable {
+    let id = UUID()
+    let title: String
+    let image: UIImage?
+    let imageURL: String?
+    
+    init(title: String, image: UIImage) {
+        self.title = title
+        self.image = image
+        self.imageURL = nil
+    }
+    
+    init(title: String, imageURL: String) {
+        self.title = title
+        self.image = nil
+        self.imageURL = imageURL
+    }
+}
+
+private struct FullScreenImageView: View {
+    @Environment(\.dismiss) private var dismiss
+    
+    let item: PreviewItem
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                
+                if let image = item.image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .padding()
+                } else if let imageURL = item.imageURL {
+                    AsyncImage(url: URL(string: imageURL)) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFit()
+                                .padding()
+                        case .failure:
+                            ContentUnavailableView(
+                                "Image Unavailable",
+                                systemImage: "photo",
+                                description: Text("The full-size image could not be loaded.")
+                            )
+                            .foregroundStyle(.white, .white.opacity(0.7))
+                        case .empty:
+                            ProgressView()
+                                .tint(.white)
+                        @unknown default:
+                            EmptyView()
+                        }
+                    }
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .tint(.white)
+                }
+                
+                ToolbarItem(placement: .principal) {
+                    Text(item.title)
+                        .foregroundStyle(.white)
+                }
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.white.opacity(0.85), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.08), radius: 8, y: 4)
     }
 }
 
