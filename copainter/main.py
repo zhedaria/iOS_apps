@@ -1,11 +1,13 @@
-"""Main FastAPI application entrypoint.
+"""Main FastAPI application entrypoint for the copainter backend.
 
 This file creates the FastAPI app, makes sure the uploads folder exists,
-registers API routes, and exposes uploaded files as static files.
+registers API routes, and exposes uploaded files as static files so the iOS app
+can load generated outline images from returned URLs.
 """
 
 from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
@@ -15,6 +17,9 @@ from routes.generate import router as generate_router
 # Store uploaded files in a local folder beside the app code.
 UPLOADS_DIR = Path("uploads")
 UPLOADS_DIR.mkdir(exist_ok=True)
+
+# Load local environment variables from copainter/.env for local development.
+load_dotenv()
 
 app = FastAPI(title="Minimal iOS App Backend")
 

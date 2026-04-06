@@ -1,7 +1,9 @@
 # Minimal FastAPI Backend
 
 Small Python backend for an iOS SwiftUI app. It accepts an uploaded image,
-saves it locally, and returns a fake JSON response.
+saves it locally, sends that image to OpenAI to generate a clean outline
+version, saves the generated outline locally, and returns the outline image URL
+in JSON.
 
 ## Project Structure
 
@@ -11,16 +13,18 @@ project/
 |-- routes/
 |   `-- generate.py
 |-- services/
-|   `-- image_service.py
+|   |-- image_service.py
+|   `-- openai_image_service.py
 `-- uploads/
 ```
 
 ## What Each File Does
 
-- [main.py](/workspaces/iOS_apps/main.py) creates the FastAPI app, includes routes, creates the `uploads/` folder, and serves uploaded files statically.
-- [routes/generate.py](/workspaces/iOS_apps/routes/generate.py) defines the `POST /generate-outline` endpoint.
-- [services/image_service.py](/workspaces/iOS_apps/services/image_service.py) contains the file-saving logic.
-- `uploads/` stores uploaded files locally and is created automatically when the app starts or when the first file is saved.
+- `main.py` creates the FastAPI app, includes routes, creates the `uploads/` folder, and serves uploaded files statically.
+- `routes/generate.py` defines the `POST /generate-outline` endpoint and returns the JSON response expected by the iOS app.
+- `services/image_service.py` saves the original uploaded image locally and returns its file information.
+- `services/openai_image_service.py` reads the saved upload, calls OpenAI with the fixed outline prompt, and saves the generated outline image locally.
+- `uploads/` stores both the original uploaded image and the generated outline image.
 
 ## API Response
 
@@ -36,11 +40,24 @@ The endpoint returns JSON in this shape:
 
 ## Install Dependencies
 
-FastAPI file uploads require `python-multipart`.
+FastAPI file uploads require `python-multipart`, OpenAI image generation
+requires the official `openai` Python SDK, and local `.env` loading uses
+`python-dotenv`.
 
 ```bash
-pip install fastapi uvicorn python-multipart
+pip install fastapi uvicorn python-multipart openai python-dotenv
 ```
+
+## Environment Variables
+
+Set this environment variable before running the server:
+
+```bash
+export OPENAI_API_KEY="your_openai_api_key_here"
+```
+
+This project also loads `copainter/.env` automatically at startup for local
+development, so putting `OPENAI_API_KEY=...` in that file now works too.
 
 ## Run The Server
 
@@ -67,7 +84,7 @@ Example response:
 ```json
 {
   "image_id": "2b7c7b5f-3d84-4b9c-92a5-4fd72b74b440",
-  "result_image_url": "http://127.0.0.1:8000/uploads/2b7c7b5f-3d84-4b9c-92a5-4fd72b74b440_test.jpg",
+  "result_image_url": "http://127.0.0.1:8000/uploads/2b7c7b5f-3d84-4b9c-92a5-4fd72b74b440_outline.png",
   "status": "completed"
 }
 ```
@@ -75,5 +92,7 @@ Example response:
 ## Notes
 
 - This version is intentionally minimal.
-- There is no database, authentication, AWS setup, or image processing yet.
-- The fake response shape matches what the iOS app expects.
+- The `POST /generate-outline` route is unchanged, but it now returns the generated outline image URL instead of the original upload URL.
+- The fixed outline prompt lives in `services/openai_image_service.py` as `OUTLINE_PROMPT`.
+- There is no database, authentication, AWS setup, or background job system.
+- If you want different outline behavior later, edit `OUTLINE_PROMPT` in one place.
