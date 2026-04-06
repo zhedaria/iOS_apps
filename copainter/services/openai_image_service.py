@@ -48,10 +48,10 @@ def generate_outline_image(source_image_path: Path, image_id: str) -> tuple[str,
 
         with source_image_path.open("rb") as image_file:
             result = client.images.edit(
-                model="gpt-image-1.5",
+                model="gpt-image-1-mini", # generating outline is deterministic, no texture or photorealistic complexity -> using cost-efficient image model
                 image=image_file,
                 prompt=OUTLINE_PROMPT,
-                input_fidelity="high",
+                input_fidelity="low",
             )
 
         image_base64 = result.data[0].b64_json
