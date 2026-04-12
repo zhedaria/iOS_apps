@@ -121,3 +121,7 @@ final class APIClient {
         return try JSONDecoder().decode([UploadRecord].self, from: data)
     }
 }
+
+// generate value map
+
+
